@@ -1,278 +1,303 @@
-"""
-generate_posts.py
-Generates a full week of social media posts for chasematthews178.github.io
-using the Claude API. Saves output to social-posts/YYYY-WW.md
-Run via GitHub Actions every Monday, or manually anytime.
-"""
-
-import anthropic
+import random
 import os
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
-client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-
-# ── SITE CONTEXT ────────────────────────────────────────────────────────────────
-SITE_URL = "https://chasematthews178.github.io"
+SITE = "https://chasematthews178.github.io"
 
 TOOLS = [
-    {
-        "name": "Jasper AI",
-        "price": "$39/mo",
-        "rating": "4.8/5",
-        "badge": "Editor's Pick",
-        "best_for": "Marketing copy and content writing",
-        "honest_take": "Learning curve is real but it's the single biggest time-saver once fluent",
-        "who_should_buy": "Businesses publishing more than 4 pieces of content per month",
-        "anchor": "#jasper"
-    },
-    {
-        "name": "Notion AI",
-        "price": "$10/mo add-on",
-        "rating": "4.6/5",
-        "badge": "Best Value",
-        "best_for": "Ops, docs, and knowledge management",
-        "honest_take": "The only tool I'd recommend to someone who's unsure about AI tools",
-        "who_should_buy": "Anyone already using Notion",
-        "anchor": "#notion"
-    },
-    {
-        "name": "Canva Magic Suite",
-        "price": "Free / $15/mo Pro",
-        "rating": "4.7/5",
-        "badge": "Free Tier",
-        "best_for": "Visual content creation without design experience",
-        "honest_take": "I replaced a $500/month part-time designer with this",
-        "who_should_buy": "Any business that needs regular visual content",
-        "anchor": "#canva"
-    },
-    {
-        "name": "Semrush",
-        "price": "from $139/mo",
-        "rating": "4.5/5",
-        "badge": "Highest ROI",
-        "best_for": "SEO and search-driven growth",
-        "honest_take": "One article written with Semrush research earns ~$400/mo in referrals",
-        "who_should_buy": "Businesses where search traffic drives leads — skip it otherwise",
-        "anchor": "#semrush"
-    },
-    {
-        "name": "Tidio",
-        "price": "Free / $29/mo Pro",
-        "rating": "4.4/5",
-        "badge": "E-Commerce",
-        "best_for": "Customer support automation for e-commerce",
-        "honest_take": "It handled 68% of support tickets automatically in the first month for one client",
-        "who_should_buy": "E-commerce businesses getting 50+ support tickets/week",
-        "anchor": "#tidio"
-    },
-    {
-        "name": "Zapier",
-        "price": "Free / $20/mo Pro",
-        "rating": "4.8/5",
-        "badge": "Automation",
-        "best_for": "Connecting apps and eliminating manual tasks",
-        "honest_take": "It quietly eliminates 20-30 minutes of manual tasks every single day",
-        "who_should_buy": "Anyone doing repetitive tasks between apps — everyone qualifies",
-        "anchor": "#zapier"
-    },
-    {
-        "name": "Kit (ConvertKit)",
-        "price": "Free to 1,000 subscribers",
-        "rating": "4.5/5",
-        "badge": "Email Marketing",
-        "best_for": "Email list building and automation",
-        "honest_take": "Built a 7-email sequence in one afternoon that's been running untouched for 14 months",
-        "who_should_buy": "Any content creator or consultant building an audience",
-        "anchor": "#kit"
-    }
+    {"name": "Jasper AI", "price": "$39/mo", "anchor": "jasper", "badge": "Editor's Pick",
+     "hook": "I was most skeptical about Jasper. Now it's the tool I use most.",
+     "stat": "Content that took 3 hours now takes 40 minutes.",
+     "caveat": "Learning curve is real. Give it a week before judging it.",
+     "who": "Anyone publishing more than 4 pieces of content per month."},
+    {"name": "Notion AI", "price": "$10/mo", "anchor": "notion", "badge": "Best Value",
+     "hook": "The most obvious $10 you'll spend if you already use Notion.",
+     "stat": "I save 20 minutes a day just from the Q&A feature alone.",
+     "caveat": "Only useful if you actually use Notion.",
+     "who": "Anyone drowning in notes, docs, and client information."},
+    {"name": "Canva Magic", "price": "Free", "anchor": "canva", "badge": "Free Tier",
+     "hook": "I stopped paying a $500/month designer. Canva replaced them.",
+     "stat": "Professional graphics in minutes. Zero design experience needed.",
+     "caveat": "Less control than Adobe. But 90% of businesses don't need that control.",
+     "who": "Any business that needs regular visual content."},
+    {"name": "Semrush", "price": "$139/mo", "anchor": "semrush", "badge": "Highest ROI",
+     "hook": "I almost cancelled Semrush three times. Then one article earned $400/month.",
+     "stat": "That article has been running 8 months. Tool paid for itself 22 times over.",
+     "caveat": "Only worth it if SEO is how you get clients.",
+     "who": "Businesses where search traffic drives leads."},
+    {"name": "Tidio", "price": "Free", "anchor": "tidio", "badge": "E-Commerce",
+     "hook": "Set it up expecting 30% automation. It handled 68% in month one.",
+     "stat": "Client went from 4 hours of daily support to 45 minutes.",
+     "caveat": "Only for businesses with high support volume.",
+     "who": "E-commerce stores getting 50+ support tickets per week."},
+    {"name": "Zapier", "price": "Free", "anchor": "zapier", "badge": "Automation",
+     "hook": "The tool I underestimated longest. It quietly saves 30 minutes every day.",
+     "stat": "8 manual steps → zero. Form fills, tasks create, emails send. Automatic.",
+     "caveat": "Complex zaps sometimes break. Keep them simple to start.",
+     "who": "Anyone doing repetitive tasks between apps — which is everyone."},
+    {"name": "Kit", "price": "Free to 1k subs", "anchor": "kit", "badge": "Email Marketing",
+     "hook": "Built a 7-email sequence one afternoon. It's run untouched for 14 months.",
+     "stat": "Email ROI: $42 back for every $1 spent. Kit is free to start.",
+     "caveat": "Pricier than Mailchimp at large list sizes.",
+     "who": "Any creator or consultant building an audience."},
 ]
 
-AUTHOR_VOICE = """
-Elias Mercer — voice guidelines:
-- Direct, honest, occasionally blunt
-- Specific numbers and real examples, not vague claims
-- Anti-hype: willing to say something isn't worth it
-- Conversational but not casual — informative with personality
-- First person, personal experience
-- Never salesy — the honesty IS the marketing
-- Short punchy sentences mixed with longer explanatory ones
-- Uses em-dashes and parentheticals naturally
-"""
+INSTAGRAM_TEMPLATES = [
+    """{hook} 📱
 
-# ── PLATFORM PROMPTS ─────────────────────────────────────────────────────────────
-PLATFORMS = {
-    "linkedin": {
-        "description": "LinkedIn long-form post (150-300 words). Professional but personal. Hook in line 1. Story structure. End with a question or CTA. No hashtags in body — put 3-5 relevant ones at the very end separated by a line break.",
-        "count": 2
-    },
-    "twitter_x": {
-        "description": "X/Twitter post. Max 280 characters. Punchy, opinionated, quotable. Can be a standalone take or the opening of a thread (mark with 🧵 if thread). Hooks are everything.",
-        "count": 3
-    },
-    "instagram": {
-        "description": "Instagram caption (100-200 words). Hook line 1. Whitespace between paragraphs (use line breaks). Story or insight. End with a CTA to 'link in bio'. 10-15 hashtags after a line break.",
-        "count": 2
-    },
-    "tiktok_script": {
-        "description": "TikTok/Reels video script (60-90 seconds spoken). Format: [HOOK], [BODY - 3 quick points], [CTA]. Conversational. Each point 1-2 sentences. Written as it would be spoken aloud.",
-        "count": 1
-    }
-}
+{stat}
 
-# ── GENERATE ────────────────────────────────────────────────────────────────────
-def generate_week_of_posts():
-    now = datetime.utcnow()
-    week_num = now.strftime("%Y-W%V")
+{caveat}
 
-    system_prompt = f"""You are a social media content writer for Elias Mercer, who runs {SITE_URL} — an honest AI tools review site for small businesses.
+Full honest review at the link in my bio 👆
 
-VOICE:
-{AUTHOR_VOICE}
+#AItools #SmallBusiness #Productivity #BusinessTools #Entrepreneur #WorkSmart #AIForBusiness #SmallBusinessOwner #BusinessAutomation #SideHustle""",
 
-ALWAYS INCLUDE: A link or reference to {SITE_URL} in every post (either the full URL or "link in bio" for Instagram).
+    """I tested 23 AI tools and spent $2,400. Here's the honest truth about {name} 👇
 
-NEVER DO:
-- Fake urgency ("Act now!", "Limited time!")
-- Empty superlatives ("amazing", "incredible", "game-changing")
-- Start posts with "I" (LinkedIn algorithm penalty)
-- Generic advice — always tie to specific tools or numbers
-- Sound like a press release
+{stat}
 
-OUTPUT FORMAT: Return valid JSON only. No markdown, no preamble. Structure:
-{{
-  "week": "{week_num}",
-  "posts": [
-    {{
-      "platform": "linkedin|twitter_x|instagram|tiktok_script",
-      "tool_focus": "tool name or 'general'",
-      "content": "the post content",
-      "notes": "brief note on strategy/timing"
-    }}
-  ]
-}}"""
+{caveat}
 
-    # Build the tools summary for context
-    tools_summary = json.dumps([{
-        "name": t["name"], "price": t["price"], "best_for": t["best_for"],
-        "honest_take": t["honest_take"], "url": f"{SITE_URL}/{t['anchor']}"
-    } for t in TOOLS], indent=2)
+Who should buy it: {who}
 
-    user_prompt = f"""Generate a full week of social media posts promoting the AI tools review site.
+Full ranking of all 7 tools I kept — link in bio 🔗
 
-TOOLS ON THE SITE:
-{tools_summary}
+#AItools #SmallBusiness #BusinessTools #Productivity #Entrepreneur #WorkSmart #BusinessGrowth #MarketingTools #AIForBusiness #SmallBusinessOwner""",
 
-WHAT TO GENERATE:
-- 2 LinkedIn posts (different tools, different angles)
-- 3 X/Twitter posts (mix of standalone takes and thread openers)
-- 2 Instagram captions
-- 1 TikTok/Reels script
+    """{name} ({price}) — my honest take after 90 days ✍️
 
-ANGLES TO USE THIS WEEK (rotate through these across posts):
-1. "I tested 23 AI tools and cancelled 16" — the editorial credibility angle
-2. Specific ROI story from a tool (use real numbers from reviews)
-3. "The free stack" — Canva + Zapier + Kit = $0
-4. Counterintuitive take — e.g. "The cheapest tool saved me the most time"
-5. Direct comparison or elimination: "Here's who should NOT buy [tool]"
-6. The calculator angle — "15 hours saved = $X/month at your rate"
+{hook}
 
-Make each post feel like a distinct piece of content, not variations of the same message."""
+{stat}
 
-    print(f"Generating posts for {week_num}...")
+The caveat nobody mentions: {caveat}
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4000,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}]
+See the full breakdown at the link in my bio 👆
+
+#AItools #SmallBusiness #Entrepreneur #BusinessTools #Productivity #HonestReview #WorkSmart #AIForBusiness #BusinessAutomation #StartupLife""",
+]
+
+TWITTER_TEMPLATES = [
+    "{hook}\n\n{stat}\n\nFull honest review: {site}/#{anchor}",
+    "Hot take on {name}:\n\n{caveat}\n\nBut also: {stat}\n\nWorth it for the right person: {site}/#{anchor}",
+    "I spent $2,400 testing AI tools.\n\nThe honest truth about {name}: {hook}\n\nFull ranking: {site}",
+    "{stat}\n\nThat's {name} ({price}).\n\nFull review: {site}/#{anchor}",
+]
+
+LINKEDIN_TEMPLATES = [
+    """{hook}
+
+Here's the full story.
+
+Over 90 days I tested 23 AI tools with real client work — not demos, not trials. Actual production.
+
+{name} was the one that surprised me most.
+
+{stat}
+
+The honest caveat I always give people: {caveat}
+
+Who it actually makes sense for: {who}
+
+I wrote up the full review with everything that worked, everything that didn't, and exactly who should and shouldn't buy it.
+
+Link in comments 👇
+
+#SmallBusiness #AItools #Productivity #BusinessTools #Entrepreneur #MarketingTools""",
+
+    """The question I get asked most: is {name} actually worth it?
+
+Honest answer: depends entirely on what you do.
+
+{stat}
+
+But here's the thing nobody tells you: {caveat}
+
+If you match this profile — {who} — it's probably worth trying.
+
+If you don't, save your money.
+
+Full breakdown in the link below.
+
+#SmallBusiness #BusinessTools #AItools #Entrepreneur #Productivity #HonestAdvice""",
+]
+
+TIKTOK_TEMPLATES = [
+    """[HOOK]
+"{hook}"
+
+[POINT 1]
+"Here's what I mean. {stat}"
+
+[POINT 2]
+"The honest part nobody mentions: {caveat}"
+
+[WHO IT'S FOR]
+"This is specifically for: {who}"
+
+[CTA]
+"Full review at the link in my bio. I ranked all 7 tools I kept after 90 days of testing."
+""",
+    """[HOOK]
+"I tested 23 AI tools. Here's the truth about {name}."
+
+[SETUP]
+"{hook}"
+
+[THE RESULT]
+"{stat}"
+
+[HONEST TAKE]
+"{caveat}"
+
+[CTA]
+"Full ranking at the link in my bio — including what annoyed me about every single one."
+""",
+]
+
+GENERAL_INSTAGRAM = [
+    """Spent $2,400 testing AI tools so you don't have to 🧪
+
+Here's what I actually kept after 90 days:
+
+→ Jasper AI ($39/mo) — writes my content drafts
+→ Notion AI ($10/mo) — answers questions about my client notes instantly  
+→ Canva Magic (free) — replaced my $500/month designer
+→ Zapier (free) — kills 30 minutes of daily busywork
+→ Kit (free) — email automation that runs while I sleep
+
+The other 16 tools? Cancelled every single one.
+
+Full honest reviews — link in bio 👆
+
+#AItools #SmallBusiness #BusinessTools #Productivity #Entrepreneur #WorkSmart #AIForBusiness #BusinessAutomation #SideHustle #PassiveIncome""",
+
+    """The $0 AI stack that runs a real business 💡
+
+✅ Canva (free) — professional graphics in minutes
+✅ Zapier (free) — connects your apps, kills manual tasks  
+✅ Kit (free to 1,000 subscribers) — email automation that converts
+
+Total monthly cost: $0
+
+I ran this exact stack for 4 months before I paid for anything.
+
+Full breakdown at link in bio 🔗
+
+#FreeTools #AItools #SmallBusiness #Entrepreneur #BusinessTips #StartupLife #Productivity #OnlineBusiness #PassiveIncome #WorkFromHome""",
+
+    """Quick math that changed how I think about AI tools 🔢
+
+8 hrs/week on content writing
+→ AI cuts that by 65% = 5 hours back per week
+
+4 hrs/week on design work  
+→ Canva cuts that by 70% = 3 hours back per week
+
+That's 8 hours a week recovered.
+At $50/hour = $1,600/month in time value.
+
+Tools to do it cost under $50/month combined.
+
+Free calculator on my site — link in bio 👆
+
+#Productivity #AItools #TimeManagement #SmallBusiness #WorkSmart #BusinessAutomation #ROI #Entrepreneur #BusinessGrowth #WorkLifeBalance""",
+]
+
+GENERAL_TWITTER = [
+    f"I tested 23 AI tools. Spent $2,400. Cancelled 16.\n\nThe 7 I kept are ranked here with full honest reviews:\n{SITE}",
+    f"Hot take: the best AI stack for small businesses costs $0.\n\nCanva + Zapier + Kit = complete marketing and automation system.\n\nFree. Forever:\n{SITE}",
+    f"Most AI tools are genuinely embarrassingly bad.\n\nNot 'could be better' bad.\n\n'I can't believe they're charging for this' bad.\n\nThe 7 that aren't:\n{SITE}",
+]
+
+
+def generate_week(week_num):
+    tool = TOOLS[week_num % len(TOOLS)]
+    gen_tool = TOOLS[(week_num + 3) % len(TOOLS)]
+
+    ig1 = random.choice(INSTAGRAM_TEMPLATES).format(
+        name=tool["name"], price=tool["price"], anchor=tool["anchor"],
+        hook=tool["hook"], stat=tool["stat"], caveat=tool["caveat"],
+        who=tool["who"], site=SITE
+    )
+    ig2 = random.choice(GENERAL_INSTAGRAM)
+    tw1 = random.choice(TWITTER_TEMPLATES).format(
+        name=tool["name"], price=tool["price"], anchor=tool["anchor"],
+        hook=tool["hook"], stat=tool["stat"], caveat=tool["caveat"],
+        who=tool["who"], site=SITE
+    )
+    tw2 = random.choice(GENERAL_TWITTER)
+    tw3 = random.choice(TWITTER_TEMPLATES).format(
+        name=gen_tool["name"], price=gen_tool["price"], anchor=gen_tool["anchor"],
+        hook=gen_tool["hook"], stat=gen_tool["stat"], caveat=gen_tool["caveat"],
+        who=gen_tool["who"], site=SITE
+    )
+    li = random.choice(LINKEDIN_TEMPLATES).format(
+        name=tool["name"], price=tool["price"], anchor=tool["anchor"],
+        hook=tool["hook"], stat=tool["stat"], caveat=tool["caveat"],
+        who=tool["who"], site=SITE
+    )
+    tt = random.choice(TIKTOK_TEMPLATES).format(
+        name=tool["name"], price=tool["price"], anchor=tool["anchor"],
+        hook=tool["hook"], stat=tool["stat"], caveat=tool["caveat"],
+        who=tool["who"], site=SITE
     )
 
-    raw = response.content[0].text.strip()
-
-    # Parse JSON
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        # Strip any accidental markdown fences
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        data = json.loads(raw)
-
-    return data, week_num
+    return ig1, ig2, tw1, tw2, tw3, li, tt
 
 
-def save_posts(data, week_num):
-    os.makedirs("social-posts", exist_ok=True)
-    filepath = f"social-posts/{week_num}.md"
+def main():
+    now = datetime.utcnow()
+    week_label = now.strftime("%Y-W%V")
+    week_num = int(now.strftime("%V"))
+
+    ig1, ig2, tw1, tw2, tw3, li, tt = generate_week(week_num)
 
     lines = [
-        f"# Social Posts — {week_num}",
-        f"*Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}*",
-        f"*Site: {SITE_URL}*",
+        f"# Social Posts — {week_label}",
+        f"*Generated {now.strftime('%Y-%m-%d')} · Site: {SITE}*",
+        "", "---", "",
+        "## 📸 INSTAGRAM", "",
+        "### Post 1 — Schedule: Monday 6pm",
+        "```", ig1, "```", "",
+        "### Post 2 — Schedule: Thursday 6pm",
+        "```", ig2, "```", "",
+        "---", "",
+        "## 🐦 TWITTER / X", "",
+        "### Post 1 — Schedule: Tuesday 10am",
+        "```", tw1, "```", "",
+        "### Post 2 — Schedule: Wednesday 12pm",
+        "```", tw2, "```", "",
+        "### Post 3 — Schedule: Friday 10am",
+        "```", tw3, "```", "",
+        "---", "",
+        "## 🔵 LINKEDIN", "",
+        "### Post — Schedule: Wednesday 9am",
+        "```", li, "```", "",
+        "---", "",
+        "## 🎵 TIKTOK SCRIPT", "",
+        "### Script — Film Wednesday or Thursday",
+        "```", tt, "```", "",
+        "---", "",
+        "## ✅ Checklist",
+        "- [ ] Instagram Post 1 — Monday 6pm",
+        "- [ ] Twitter Post 1 — Tuesday 10am",
+        "- [ ] LinkedIn — Wednesday 9am",
+        "- [ ] TikTok — Wednesday or Thursday",
+        "- [ ] Twitter Post 2 — Wednesday 12pm",
+        "- [ ] Instagram Post 2 — Thursday 6pm",
+        "- [ ] Twitter Post 3 — Friday 10am",
         "",
-        "---",
-        ""
+        "*Generated automatically — no API key needed.*"
     ]
 
-    platform_order = ["linkedin", "twitter_x", "instagram", "tiktok_script"]
-    platform_labels = {
-        "linkedin": "## 🔵 LinkedIn",
-        "twitter_x": "## 🐦 X / Twitter",
-        "instagram": "## 📸 Instagram",
-        "tiktok_script": "## 🎵 TikTok / Reels Script"
-    }
-
-    posts_by_platform = {p: [] for p in platform_order}
-    for post in data.get("posts", []):
-        p = post.get("platform", "linkedin")
-        if p in posts_by_platform:
-            posts_by_platform[p].append(post)
-
-    for platform in platform_order:
-        posts = posts_by_platform[platform]
-        if not posts:
-            continue
-        lines.append(platform_labels.get(platform, f"## {platform}"))
-        lines.append("")
-        for i, post in enumerate(posts, 1):
-            tool = post.get("tool_focus", "general")
-            notes = post.get("notes", "")
-            content = post.get("content", "")
-            lines.append(f"### Post {i} — Focus: {tool}")
-            if notes:
-                lines.append(f"*Strategy: {notes}*")
-            lines.append("")
-            lines.append("```")
-            lines.append(content)
-            lines.append("```")
-            lines.append("")
-        lines.append("---")
-        lines.append("")
-
-    lines += [
-        "## ✅ Publishing Checklist",
-        "",
-        "- [ ] LinkedIn Post 1 — schedule Mon 9am",
-        "- [ ] LinkedIn Post 2 — schedule Wed 12pm",
-        "- [ ] X Post 1 — schedule Mon 10am",
-        "- [ ] X Post 2 — schedule Tue 2pm",
-        "- [ ] X Post 3 — schedule Thu 11am",
-        "- [ ] Instagram Post 1 — schedule Tue 6pm",
-        "- [ ] Instagram Post 2 — schedule Fri 5pm",
-        "- [ ] TikTok Script — film & post Wed or Thu",
-        "",
-        "---",
-        "*Posts auto-generated by GitHub Actions. Review before publishing.*"
-    ]
-
-    with open(filepath, "w") as f:
+    os.makedirs("social-posts", exist_ok=True)
+    path = f"social-posts/{week_label}.md"
+    with open(path, "w") as f:
         f.write("\n".join(lines))
-
-    print(f"✓ Saved {len(data.get('posts', []))} posts to {filepath}")
-    return filepath
+    print(f"✓ Generated {path}")
 
 
 if __name__ == "__main__":
-    data, week_num = generate_week_of_posts()
-    filepath = save_posts(data, week_num)
-    print(f"✓ Done. Open {filepath} to review and schedule your posts.")
+    main()
